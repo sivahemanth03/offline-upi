@@ -10,7 +10,7 @@ const DEMO_WALLETS: Wallet[] = [
     name: 'Demo User A',
     phoneNumber: '9023456766',
     address: '56766@chain',
-    balance: 1000,
+    balance: 50,
     pinHash: '1234' // Simple mock hash
   },
   {
@@ -18,7 +18,7 @@ const DEMO_WALLETS: Wallet[] = [
     name: 'Demo User B',
     phoneNumber: '9098765432',
     address: '65432@chain',
-    balance: 1000,
+    balance: 50,
     pinHash: '1234'
   }
 ];
