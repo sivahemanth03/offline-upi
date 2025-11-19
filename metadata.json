@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Offline UPI Chain",
+  "description": "A demonstration of offline blockchain-style wallet transfers using QR and simulated Bluetooth protocols.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
