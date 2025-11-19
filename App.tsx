@@ -793,7 +793,7 @@ const DemoGuideView: React.FC<DemoGuideViewProps> = ({ onNavigate }) => (
                     <li>Login with PIN: <b>1234</b></li>
                     <li>User A starts with ₹1000</li>
                     <li>Switch to User B in Settings</li>
-                    <li>Use "Send" > "Bluetooth" to simulate offline transfer</li>
+                    <li>Use "Send" &gt; "Bluetooth" to simulate offline transfer</li>
                     <li>See "Pending" status appear</li>
                     <li>Click "Sync Chain" to finalize</li>
                 </ul>
