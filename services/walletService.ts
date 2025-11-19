@@ -3,6 +3,21 @@ import { Wallet, Transaction, TransactionStatus, TransactionPacket } from '../ty
 const STORAGE_KEY_WALLETS = 'offline_upi_wallets';
 const STORAGE_KEY_TRANSACTIONS = 'offline_upi_transactions';
 
+// SHA-256 hash for "1234"
+const DEFAULT_PIN_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
+
+// Helper for Unique IDs
+const generateId = (prefix: string = 'tx'): string => {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+};
+
+export const hashPin = async (pin: string): Promise<string> => {
+  const msgBuffer = new TextEncoder().encode(pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
 // Initial Demo Data
 const DEMO_WALLETS: Wallet[] = [
   {
@@ -11,7 +26,7 @@ const DEMO_WALLETS: Wallet[] = [
     phoneNumber: '9023456766',
     address: '56766@chain',
     balance: 50,
-    pinHash: '1234' // Simple mock hash
+    pinHash: DEFAULT_PIN_HASH
   },
   {
     id: 'wallet_b',
@@ -19,14 +34,27 @@ const DEMO_WALLETS: Wallet[] = [
     phoneNumber: '9098765432',
     address: '65432@chain',
     balance: 50,
-    pinHash: '1234'
+    pinHash: DEFAULT_PIN_HASH
   }
 ];
 
 export const initializeStorage = () => {
-  if (!localStorage.getItem(STORAGE_KEY_WALLETS)) {
+  const storedWallets = localStorage.getItem(STORAGE_KEY_WALLETS);
+  if (!storedWallets) {
     localStorage.setItem(STORAGE_KEY_WALLETS, JSON.stringify(DEMO_WALLETS));
+  } else {
+    // Migration: If wallets are using the old plain text '1234', overwrite with hashed version
+    try {
+        const parsed = JSON.parse(storedWallets);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].pinHash === '1234') {
+            console.log("Migrating legacy wallets to hashed PINs...");
+            localStorage.setItem(STORAGE_KEY_WALLETS, JSON.stringify(DEMO_WALLETS));
+        }
+    } catch (e) {
+        console.error("Error parsing wallets for migration check", e);
+    }
   }
+
   if (!localStorage.getItem(STORAGE_KEY_TRANSACTIONS)) {
     localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify([]));
   }
@@ -73,10 +101,14 @@ export const processOfflineTransaction = (packet: TransactionPacket) => {
   const sender = wallets.find(w => w.phoneNumber === packet.senderPhone);
   // const receiver = wallets.find(w => w.phoneNumber === packet.receiverPhone);
 
+  // Generate unique IDs
+  const senderTxId = generateId('tx_send');
+  const receiverTxId = generateId('tx_recv');
+
   // Create Transaction Records
   // 1. Sender's Record (Pending, Deducted locally)
   const senderTx: Transaction = {
-    id: `tx_${Date.now()}_send`,
+    id: senderTxId,
     senderPhone: packet.senderPhone,
     senderAddress: packet.senderAddress,
     receiverPhone: packet.receiverPhone,
@@ -90,7 +122,7 @@ export const processOfflineTransaction = (packet: TransactionPacket) => {
   // 2. Receiver's Record (Pending, Not added to balance yet until sync or "received" packet processing)
   // In this offline demo, we simulate the receiver getting the packet immediately if "Bluetooth" is used.
   const receiverTx: Transaction = {
-    id: `tx_${Date.now()}_recv`,
+    id: receiverTxId,
     senderPhone: packet.senderPhone,
     senderAddress: packet.senderAddress,
     receiverPhone: packet.receiverPhone,
@@ -120,6 +152,9 @@ export const syncBlockchain = (): Promise<number> => {
       let syncCount = 0;
 
       const updatedTransactions = transactions.map(tx => {
+        // Ensure every transaction has an ID (fallback for legacy data)
+        const txId = tx.id || generateId('tx_restored');
+
         if (tx.status === TransactionStatus.PENDING) {
           syncCount++;
           
@@ -133,11 +168,13 @@ export const syncBlockchain = (): Promise<number> => {
           
           return {
             ...tx,
+            id: txId,
             status: TransactionStatus.CONFIRMED,
             hash: generateHash()
           };
         }
-        return tx;
+        // Return transaction with ensured ID
+        return { ...tx, id: txId };
       });
 
       saveWallets(wallets);
@@ -147,7 +184,7 @@ export const syncBlockchain = (): Promise<number> => {
   });
 };
 
-export const topUpWallet = (phoneNumber: string, amount: number) => {
+export const topUpWallet = (phoneNumber: string, amount: number, source: string = 'UPI_BANK') => {
     const wallets = getWallets();
     const transactions = getTransactions();
     const wallet = wallets.find(w => w.phoneNumber === phoneNumber);
@@ -155,9 +192,9 @@ export const topUpWallet = (phoneNumber: string, amount: number) => {
     if (wallet) {
         wallet.balance += amount;
         const tx: Transaction = {
-            id: `tx_${Date.now()}_topup`,
-            senderPhone: 'SYSTEM',
-            senderAddress: 'UPI_BANK',
+            id: generateId('tx_topup'),
+            senderPhone: 'BANK_ACC',
+            senderAddress: source, // e.g. "Google Pay", "PhonePe"
             receiverPhone: wallet.phoneNumber,
             receiverAddress: wallet.address,
             amount: amount,

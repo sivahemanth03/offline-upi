@@ -22,7 +22,10 @@ import {
   Upload,
   Keyboard,
   ArrowLeft,
-  Phone
+  Phone,
+  CreditCard,
+  Landmark,
+  Link
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { 
@@ -36,7 +39,7 @@ import * as WalletService from './services/walletService';
 import * as BackupService from './services/backupService';
 
 // --- Types for App State ---
-type View = 'LOGIN' | 'DASHBOARD' | 'SEND' | 'RECEIVE' | 'HISTORY' | 'SETTINGS' | 'BACKUP' | 'DEMO_GUIDE';
+type View = 'LOGIN' | 'DASHBOARD' | 'SEND' | 'RECEIVE' | 'HISTORY' | 'SETTINGS' | 'BACKUP' | 'DEMO_GUIDE' | 'ADD_MONEY';
 
 // --- Helper Components ---
 
@@ -54,7 +57,7 @@ const GradientCard: React.FC<GradientCardProps> = ({ children, className = '' })
 interface ButtonProps {
   onClick?: () => void;
   children: React.ReactNode;
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'success';
   className?: string;
   disabled?: boolean;
 }
@@ -65,7 +68,8 @@ const Button: React.FC<ButtonProps> = ({ onClick, children, variant = 'primary',
     primary: "bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/20 hover:shadow-purple-500/40",
     secondary: "bg-slate-700 text-slate-200 hover:bg-slate-600",
     outline: "border-2 border-slate-600 text-slate-300 hover:border-slate-400",
-    danger: "bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+    danger: "bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20",
+    success: "bg-green-500 text-white shadow-lg shadow-green-500/20 hover:bg-green-600"
   };
   return (
     <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -111,7 +115,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ tx, walletAddress }) 
                 </div>
                 <div>
                     <p className="font-bold text-sm text-white">
-                        {isTopUp ? 'Wallet Top-up' : isSender ? `To ${tx.receiverPhone}` : `From ${tx.senderPhone}`}
+                        {isTopUp ? (tx.senderAddress === 'UPI_BANK' ? 'Wallet Top-up' : `Added via ${tx.senderAddress}`) : isSender ? `To ${tx.receiverPhone}` : `From ${tx.senderPhone}`}
                     </p>
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-500">{new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -161,12 +165,20 @@ const LoginView: React.FC<LoginViewProps> = ({ wallets, onLogin }) => {
       }
   };
 
-  const handlePinSubmit = () => {
-      if (pin === '1234' && candidate) {
-          onLogin(candidate.id);
-          setPin('');
-      } else {
-          alert('Incorrect PIN. Try 1234');
+  const handlePinSubmit = async () => {
+      if (candidate && pin) {
+          try {
+            const hashedInput = await WalletService.hashPin(pin);
+            if (hashedInput === candidate.pinHash) {
+                onLogin(candidate.id);
+                setPin('');
+            } else {
+                alert('Incorrect PIN. Try 1234');
+            }
+          } catch (err) {
+            console.error("PIN hashing error", err);
+            alert("Error processing PIN");
+          }
       }
   };
 
@@ -277,7 +289,6 @@ interface DashboardViewProps {
   pendingCount: number;
   isSyncing: boolean;
   onNavigate: (view: View) => void;
-  onTopUp: () => void;
   onSync: () => void;
 }
 
@@ -287,7 +298,6 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   pendingCount, 
   isSyncing,
   onNavigate,
-  onTopUp,
   onSync
 }) => (
   <div className="space-y-6 pb-24">
@@ -311,7 +321,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
            <p className="text-slate-300 text-sm mb-1">Total Balance</p>
            <h1 className="text-4xl font-bold text-white mb-4">₹ {activeWallet?.balance.toLocaleString()}</h1>
            <div className="flex gap-3">
-               <button onClick={onTopUp} className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-sm py-2 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-colors">
+               <button onClick={() => onNavigate('ADD_MONEY')} className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-sm py-2 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-colors">
                    <Plus size={16} /> Add Money
                </button>
                <button onClick={onSync} className={`flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-sm py-2 rounded-lg text-sm font-medium text-white flex items-center justify-center gap-2 transition-colors ${pendingCount > 0 ? 'animate-pulse border border-yellow-500/50' : ''}`}>
@@ -363,6 +373,172 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     )}
   </div>
 );
+
+interface AddMoneyViewProps {
+  activeWallet: Wallet | undefined;
+  onNavigate: (view: View) => void;
+  onAddMoney: (amount: number, source: string) => void;
+}
+
+const AddMoneyView: React.FC<AddMoneyViewProps> = ({ activeWallet, onNavigate, onAddMoney }) => {
+  const [amount, setAmount] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [selectedApp, setSelectedApp] = useState<string | null>(null);
+  
+  // Permission Simulation
+  const [showPermissionDialog, setShowPermissionDialog] = useState(false);
+  const [connectedApps, setConnectedApps] = useState<string[]>([]);
+  const [pendingApp, setPendingApp] = useState<string | null>(null);
+
+  const handleAppSelect = (appName: string) => {
+     if (!amount || Number(amount) <= 0) {
+          alert("Please enter a valid amount");
+          return;
+      }
+
+      if (connectedApps.includes(appName)) {
+          startPayment(appName);
+      } else {
+          setPendingApp(appName);
+          setShowPermissionDialog(true);
+      }
+  };
+
+  const confirmPermission = () => {
+      if (pendingApp) {
+          setConnectedApps(prev => [...prev, pendingApp]);
+          setShowPermissionDialog(false);
+          startPayment(pendingApp);
+          setPendingApp(null);
+      }
+  };
+
+  const startPayment = (appName: string) => {
+      setSelectedApp(appName);
+      setProcessing(true);
+      setTimeout(() => {
+          onAddMoney(Number(amount), appName);
+      }, 2500);
+  };
+
+  const upiApps = [
+      { name: 'Google Pay', color: 'bg-blue-500', icon: <CreditCard size={20} /> },
+      { name: 'PhonePe', color: 'bg-purple-600', icon: <Smartphone size={20} /> },
+      { name: 'Paytm', color: 'bg-cyan-500', icon: <Landmark size={20} /> },
+      { name: 'BHIM', color: 'bg-orange-500', icon: <ShieldCheck size={20} /> },
+  ];
+
+  if (processing) {
+      return (
+          <div className="h-full flex flex-col items-center justify-center space-y-6 animate-fade-in">
+              <div className="relative">
+                  <div className="w-20 h-20 border-4 border-slate-700 rounded-full" />
+                  <div className="absolute top-0 left-0 w-20 h-20 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                  <div className="absolute inset-0 flex items-center justify-center font-bold text-xl">₹</div>
+              </div>
+              <div className="text-center">
+                  <h3 className="text-xl font-bold text-white">Processing Payment</h3>
+                  <p className="text-slate-400 mt-1">Requesting money from {selectedApp}...</p>
+                  <p className="text-xs text-slate-500 mt-4">Do not close this window</p>
+              </div>
+          </div>
+      );
+  }
+
+  if (showPermissionDialog && pendingApp) {
+      return (
+          <div className="h-full flex flex-col items-center justify-center p-6 animate-fade-in bg-slate-900/90 backdrop-blur-sm absolute inset-0 z-50">
+              <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl w-full max-w-xs shadow-2xl">
+                  <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 mb-4 mx-auto">
+                      <Link size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white text-center mb-2">Give Access?</h3>
+                  <p className="text-slate-400 text-sm text-center mb-6">
+                      Allow <b>ChainWallet</b> to link with your <b>{pendingApp}</b> account to process payments.
+                  </p>
+                  <div className="space-y-3">
+                      <Button onClick={confirmPermission} variant="primary">Allow Access</Button>
+                      <Button onClick={() => setShowPermissionDialog(false)} variant="secondary">Deny</Button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  return (
+      <div className="h-full flex flex-col">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <button onClick={() => onNavigate('DASHBOARD')} className="text-slate-400 hover:text-white"><ArrowLeft /></button> 
+              Add Money
+          </h2>
+
+          <div className="flex-1 overflow-y-auto space-y-8">
+               <div>
+                   <label className="text-slate-400 text-sm ml-1">Enter Amount</label>
+                   <div className="relative mt-2">
+                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-2xl font-bold">₹</span>
+                       <input 
+                          type="number" 
+                          value={amount} 
+                          onChange={(e) => setAmount(e.target.value)}
+                          autoFocus
+                          className="w-full bg-transparent border-b-2 border-slate-600 py-4 pl-10 text-5xl font-bold text-white outline-none focus:border-purple-500 transition-colors"
+                          placeholder="0"
+                       />
+                   </div>
+                   <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                       {[100, 500, 1000, 2000].map(val => (
+                           <button 
+                              key={val}
+                              onClick={() => setAmount(val.toString())}
+                              className="px-4 py-2 bg-slate-800 rounded-full border border-slate-700 text-sm font-medium text-purple-400 hover:bg-purple-500/10 hover:border-purple-500/50 transition-colors whitespace-nowrap"
+                           >
+                               + ₹{val}
+                           </button>
+                       ))}
+                   </div>
+               </div>
+
+               <div>
+                   <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+                       <Smartphone size={18} className="text-slate-400" />
+                       Pay via UPI App
+                   </h3>
+                   <div className="grid grid-cols-2 gap-3">
+                       {upiApps.map(app => (
+                           <button 
+                              key={app.name}
+                              onClick={() => handleAppSelect(app.name)}
+                              disabled={!amount}
+                              className={`p-4 rounded-xl border border-slate-700 flex items-center gap-3 hover:bg-slate-800 transition-all active:scale-95 ${!amount ? 'opacity-50 cursor-not-allowed' : ''}`}
+                           >
+                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${app.color}`}>
+                                   {app.icon}
+                               </div>
+                               <div className="text-left">
+                                   <span className="text-slate-200 font-medium text-sm block">{app.name}</span>
+                                   {connectedApps.includes(app.name) && (
+                                       <span className="text-[10px] text-green-400 flex items-center gap-1"><CheckCircle2 size={8} /> Linked</span>
+                                   )}
+                               </div>
+                           </button>
+                       ))}
+                   </div>
+               </div>
+
+               <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-start gap-3">
+                   <div className="mt-1 text-slate-400"><ShieldCheck size={18} /></div>
+                   <div>
+                       <p className="text-xs text-slate-300 font-medium">Secure Transaction</p>
+                       <p className="text-[10px] text-slate-500 mt-1">
+                           Your payment is processed securely by your selected UPI provider. ChainWallet only records the confirmed credit.
+                       </p>
+                   </div>
+               </div>
+          </div>
+      </div>
+  );
+};
 
 interface SendViewProps {
   activeWallet: Wallet | undefined;
@@ -842,13 +1018,12 @@ export default function App() {
     alert(`Synced ${count} transactions to the blockchain ledger.`);
   };
 
-  const handleTopUp = () => {
-    if (!activeWallet) return;
-    const amount = prompt("Enter amount to add:");
-    if (amount && !isNaN(Number(amount))) {
-        WalletService.topUpWallet(activeWallet.phoneNumber, Number(amount));
-        refreshData();
-    }
+  const handleAddMoney = (amount: number, source: string) => {
+      if (!activeWallet) return;
+      WalletService.topUpWallet(activeWallet.phoneNumber, amount, source);
+      refreshData();
+      setCurrentView('DASHBOARD');
+      alert(`Successfully added ₹${amount} via ${source}`);
   };
 
   const handleLogout = () => {
@@ -878,8 +1053,14 @@ export default function App() {
                     pendingCount={pendingCount}
                     isSyncing={isSyncing}
                     onNavigate={setCurrentView}
-                    onTopUp={handleTopUp}
                     onSync={handleSync}
+                 />
+             )}
+             {currentView === 'ADD_MONEY' && (
+                 <AddMoneyView
+                    activeWallet={activeWallet}
+                    onNavigate={setCurrentView}
+                    onAddMoney={handleAddMoney}
                  />
              )}
              {currentView === 'SEND' && (
@@ -920,7 +1101,7 @@ export default function App() {
 
           {currentView !== 'LOGIN' && (
               <nav className="bg-slate-900/80 backdrop-blur-lg border-t border-slate-800 px-6 py-2 flex justify-between items-center pb-6 z-20">
-                  <NavItem icon={WalletIcon} label="Home" active={currentView === 'DASHBOARD'} onClick={() => setCurrentView('DASHBOARD')} />
+                  <NavItem icon={WalletIcon} label="Home" active={currentView === 'DASHBOARD' || currentView === 'ADD_MONEY'} onClick={() => setCurrentView('DASHBOARD')} />
                   <NavItem icon={History} label="History" active={currentView === 'HISTORY'} onClick={() => setCurrentView('HISTORY')} />
                   
                   <div className="-mt-8 bg-purple-600 p-1 rounded-full shadow-lg shadow-purple-500/40">
