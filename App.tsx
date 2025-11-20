@@ -25,7 +25,8 @@ import {
   Phone,
   CreditCard,
   Landmark,
-  Link
+  Link,
+  X
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { 
@@ -390,6 +391,13 @@ const AddMoneyView: React.FC<AddMoneyViewProps> = ({ activeWallet, onNavigate, o
   const [connectedApps, setConnectedApps] = useState<string[]>([]);
   const [pendingApp, setPendingApp] = useState<string | null>(null);
 
+  // Card Modal State
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiry, setExpiry] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardName, setCardName] = useState('');
+
   const handleAppSelect = (appName: string) => {
      if (!amount || Number(amount) <= 0) {
           alert("Please enter a valid amount");
@@ -413,12 +421,26 @@ const AddMoneyView: React.FC<AddMoneyViewProps> = ({ activeWallet, onNavigate, o
       }
   };
 
-  const startPayment = (appName: string) => {
-      setSelectedApp(appName);
+  const startPayment = (source: string) => {
+      setSelectedApp(source);
       setProcessing(true);
       setTimeout(() => {
-          onAddMoney(Number(amount), appName);
+          onAddMoney(Number(amount), source);
       }, 2500);
+  };
+
+  const handleCardPay = () => {
+      if (!cardNumber || !expiry || !cvv || !cardName) {
+          alert("Please fill in all card details");
+          return;
+      }
+      if (cardNumber.length < 16) {
+          alert("Invalid card number");
+          return;
+      }
+      setShowCardModal(false);
+      const last4 = cardNumber.slice(-4);
+      startPayment(`Card ****${last4}`);
   };
 
   const upiApps = [
@@ -445,28 +467,8 @@ const AddMoneyView: React.FC<AddMoneyViewProps> = ({ activeWallet, onNavigate, o
       );
   }
 
-  if (showPermissionDialog && pendingApp) {
-      return (
-          <div className="h-full flex flex-col items-center justify-center p-6 animate-fade-in bg-slate-900/90 backdrop-blur-sm absolute inset-0 z-50">
-              <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl w-full max-w-xs shadow-2xl">
-                  <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 mb-4 mx-auto">
-                      <Link size={24} />
-                  </div>
-                  <h3 className="text-xl font-bold text-white text-center mb-2">Give Access?</h3>
-                  <p className="text-slate-400 text-sm text-center mb-6">
-                      Allow <b>ChainWallet</b> to link with your <b>{pendingApp}</b> account to process payments.
-                  </p>
-                  <div className="space-y-3">
-                      <Button onClick={confirmPermission} variant="primary">Allow Access</Button>
-                      <Button onClick={() => setShowPermissionDialog(false)} variant="secondary">Deny</Button>
-                  </div>
-              </div>
-          </div>
-      );
-  }
-
   return (
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col relative">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
               <button onClick={() => onNavigate('DASHBOARD')} className="text-slate-400 hover:text-white"><ArrowLeft /></button> 
               Add Money
@@ -526,16 +528,145 @@ const AddMoneyView: React.FC<AddMoneyViewProps> = ({ activeWallet, onNavigate, o
                    </div>
                </div>
 
+               <div>
+                  <div className="flex items-center gap-4 my-2">
+                     <div className="h-px bg-slate-700 flex-1" />
+                     <span className="text-slate-500 text-xs">OR PAY USING</span>
+                     <div className="h-px bg-slate-700 flex-1" />
+                  </div>
+                   
+                   <button 
+                      onClick={() => {
+                          if (!amount || Number(amount) <= 0) {
+                              alert("Please enter a valid amount");
+                              return;
+                          }
+                          setShowCardModal(true);
+                      }}
+                      disabled={!amount}
+                      className={`w-full p-4 rounded-xl border border-slate-700 flex items-center gap-3 hover:bg-slate-800 transition-all active:scale-95 ${!amount ? 'opacity-50 cursor-not-allowed' : ''}`}
+                   >
+                       <div className="w-10 h-10 rounded-full flex items-center justify-center bg-pink-600 text-white font-bold text-sm">
+                           <CreditCard size={20} />
+                       </div>
+                       <div className="text-left">
+                           <span className="text-slate-200 font-medium text-sm block">Credit / Debit Card</span>
+                           <span className="text-[10px] text-slate-500">Visa, Mastercard, RuPay</span>
+                       </div>
+                   </button>
+               </div>
+
                <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-start gap-3">
                    <div className="mt-1 text-slate-400"><ShieldCheck size={18} /></div>
                    <div>
                        <p className="text-xs text-slate-300 font-medium">Secure Transaction</p>
                        <p className="text-[10px] text-slate-500 mt-1">
-                           Your payment is processed securely by your selected UPI provider. ChainWallet only records the confirmed credit.
+                           Your payment is processed securely by your selected provider. ChainWallet only records the confirmed credit.
                        </p>
                    </div>
                </div>
           </div>
+
+          {/* Permission Modal */}
+          {showPermissionDialog && pendingApp && (
+              <div className="absolute inset-0 z-50 bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 animate-fade-in">
+                  <div className="bg-slate-800 border border-slate-700 p-6 rounded-2xl w-full max-w-xs shadow-2xl">
+                      <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 mb-4 mx-auto">
+                          <Link size={24} />
+                      </div>
+                      <h3 className="text-xl font-bold text-white text-center mb-2">Give Access?</h3>
+                      <p className="text-slate-400 text-sm text-center mb-6">
+                          Allow <b>ChainWallet</b> to link with your <b>{pendingApp}</b> account to process payments.
+                      </p>
+                      <div className="space-y-3">
+                          <Button onClick={confirmPermission} variant="primary">Allow Access</Button>
+                          <Button onClick={() => setShowPermissionDialog(false)} variant="secondary">Deny</Button>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* Card Modal */}
+          {showCardModal && (
+              <div className="absolute inset-0 z-50 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 animate-fade-in">
+                  <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full shadow-2xl overflow-hidden relative">
+                      <button onClick={() => setShowCardModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+                          <X size={24} />
+                      </button>
+                      
+                      <div className="p-6 border-b border-slate-700">
+                          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                              <CreditCard className="text-pink-500" size={20} />
+                              Enter Card Details
+                          </h3>
+                      </div>
+                      
+                      <div className="p-6 space-y-4">
+                          <div>
+                              <label className="text-xs text-slate-400 ml-1 mb-1 block">Card Number</label>
+                              <input 
+                                  type="text" 
+                                  placeholder="0000 0000 0000 0000"
+                                  maxLength={19}
+                                  value={cardNumber}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                    setCardNumber(v);
+                                  }}
+                                  className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white tracking-widest outline-none focus:border-pink-500 transition-colors"
+                              />
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                  <label className="text-xs text-slate-400 ml-1 mb-1 block">Expiry Date</label>
+                                  <input 
+                                      type="text" 
+                                      placeholder="MM/YY"
+                                      maxLength={5}
+                                      value={expiry}
+                                      onChange={(e) => setExpiry(e.target.value)}
+                                      className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white outline-none focus:border-pink-500 transition-colors"
+                                  />
+                              </div>
+                              <div>
+                                  <label className="text-xs text-slate-400 ml-1 mb-1 block">CVV</label>
+                                  <input 
+                                      type="password" 
+                                      placeholder="123"
+                                      maxLength={3}
+                                      value={cvv}
+                                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, ''))}
+                                      className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white outline-none focus:border-pink-500 transition-colors"
+                                  />
+                              </div>
+                          </div>
+
+                          <div>
+                              <label className="text-xs text-slate-400 ml-1 mb-1 block">Cardholder Name</label>
+                              <input 
+                                  type="text" 
+                                  placeholder="Name on Card"
+                                  value={cardName}
+                                  onChange={(e) => setCardName(e.target.value)}
+                                  className="w-full bg-slate-900 border border-slate-600 rounded-xl p-3 text-white outline-none focus:border-pink-500 transition-colors"
+                              />
+                          </div>
+                      </div>
+
+                      <div className="p-6 pt-2">
+                          <Button onClick={handleCardPay} variant="primary">
+                              Pay ₹{amount} Securely
+                          </Button>
+                          <div className="flex justify-center gap-2 mt-4 opacity-50">
+                               <div className="w-8 h-5 bg-white rounded" />
+                               <div className="w-8 h-5 bg-white rounded" />
+                               <div className="w-8 h-5 bg-white rounded" />
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          )}
       </div>
   );
 };
