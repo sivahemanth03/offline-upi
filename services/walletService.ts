@@ -1,7 +1,8 @@
 import { Wallet, Transaction, TransactionStatus, TransactionPacket } from '../types';
 
-const STORAGE_KEY_WALLETS = 'offline_upi_wallets';
-const STORAGE_KEY_TRANSACTIONS = 'offline_upi_transactions';
+// Updated keys to v5 to force a data reset for the correct demo state (50rs balance)
+const STORAGE_KEY_WALLETS = 'offline_upi_wallets_v5';
+const STORAGE_KEY_TRANSACTIONS = 'offline_upi_transactions_v5';
 
 // SHA-256 hash for "1234"
 const DEFAULT_PIN_HASH = '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4';
