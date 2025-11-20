@@ -94,6 +94,30 @@ export const generateHash = (): string => {
   return Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 };
 
+export const topUpWallet = (phoneNumber: string, amount: number, source: string = 'Cash') => {
+  const wallets = getWallets();
+  const transactions = getTransactions();
+  const wallet = wallets.find(w => w.phoneNumber === phoneNumber);
+  
+  if (wallet) {
+    wallet.balance += amount;
+    const tx: Transaction = {
+      id: generateId('tx_topup'),
+      senderPhone: 'TOPUP',
+      senderAddress: source, // Use source (e.g., Google Pay) here
+      receiverPhone: phoneNumber,
+      receiverAddress: wallet.address,
+      amount: amount,
+      timestamp: Date.now(),
+      status: TransactionStatus.CONFIRMED,
+      type: 'TOPUP'
+    };
+    
+    saveWallets(wallets);
+    saveTransactions([...transactions, tx]);
+  }
+};
+
 export const processOfflineTransaction = (packet: TransactionPacket) => {
   const wallets = getWallets();
   const transactions = getTransactions();
@@ -180,30 +204,6 @@ export const syncBlockchain = (): Promise<number> => {
       saveWallets(wallets);
       saveTransactions(updatedTransactions);
       resolve(syncCount);
-    }, 2000); // Simulate network delay
+    }, 2000);
   });
 };
-
-export const topUpWallet = (phoneNumber: string, amount: number, source: string = 'UPI_BANK') => {
-    const wallets = getWallets();
-    const transactions = getTransactions();
-    const wallet = wallets.find(w => w.phoneNumber === phoneNumber);
-    
-    if (wallet) {
-        wallet.balance += amount;
-        const tx: Transaction = {
-            id: generateId('tx_topup'),
-            senderPhone: 'BANK_ACC',
-            senderAddress: source, // e.g. "Google Pay", "PhonePe"
-            receiverPhone: wallet.phoneNumber,
-            receiverAddress: wallet.address,
-            amount: amount,
-            timestamp: Date.now(),
-            status: TransactionStatus.CONFIRMED,
-            hash: generateHash(),
-            type: 'TOPUP'
-        };
-        saveWallets(wallets);
-        saveTransactions([tx, ...transactions]);
-    }
-}

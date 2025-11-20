@@ -967,7 +967,7 @@ const DemoGuideView: React.FC<DemoGuideViewProps> = ({ onNavigate }) => (
                 <h4 className="text-white font-bold text-sm mb-2">Demo Instructions</h4>
                 <ul className="list-disc list-inside text-xs text-slate-400 space-y-1">
                     <li>Login with PIN: <b>1234</b></li>
-                    <li>User A starts with ₹1000</li>
+                    <li>User A starts with ₹50</li>
                     <li>Switch to User B in Settings</li>
                     <li>Use "Send" &gt; "Bluetooth" to simulate offline transfer</li>
                     <li>See "Pending" status appear</li>
